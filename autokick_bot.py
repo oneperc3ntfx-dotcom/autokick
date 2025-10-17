@@ -17,7 +17,6 @@ import pytz
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8196752676:AAEWUiQtvwGgwVbh6UDV-RxqwHk-3CYKnGA")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))
 JKT = pytz.timezone("Asia/Jakarta")
-
 DATA_FILE = "members.json"
 
 
@@ -82,7 +81,7 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
         data[user_id] = {
             "username": user.username or user.full_name,
             "join_time": join_time,
-            "mode": None,  # default belum pilih
+            "mode": None,
         }
         save_data(data)
 
@@ -107,9 +106,10 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 
 # =============================
-# TUGAS AUTO KICK
+# AUTO KICK TASK
 # =============================
 async def auto_kick_task(app):
+    print("⚙️ Background auto-kick task dimulai...")
     while True:
         data = load_data()
         now = datetime.now(JKT)
@@ -120,9 +120,8 @@ async def auto_kick_task(app):
             mode = info.get("mode")
 
             if mode == "permanent":
-                continue  # tidak dikeluarkan sama sekali
+                continue
 
-            # Belum memilih → keluarkan setelah 10 menit
             if mode is None and (now - join_time) >= timedelta(minutes=10):
                 try:
                     await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
@@ -136,7 +135,6 @@ async def auto_kick_task(app):
                 except Exception as e:
                     print(f"⚠️ Gagal kick {user_id}: {e}")
 
-            # Mode 24 jam → keluarkan setelah 24 jam
             elif mode == "24jam" and (now - join_time) >= timedelta(hours=24):
                 try:
                     await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
@@ -153,21 +151,22 @@ async def auto_kick_task(app):
         if changed:
             save_data(data)
 
-        await asyncio.sleep(60)  # cek setiap 1 menit
+        await asyncio.sleep(60)
 
 
 # =============================
-# MAIN
+# JALANKAN BOT
 # =============================
+async def on_start(app):
+    """Dipanggil setelah bot aktif — mulai background task di sini."""
+    asyncio.create_task(auto_kick_task(app))
+    print("🤖 Bot AutoKick aktif dan memantau grup...")
+
+
 def main():
-    app = ApplicationBuilder().token(BOT_TOKEN).build()
-
+    app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(CallbackQueryHandler(button_callback))
-
-    asyncio.create_task(auto_kick_task(app))
-
-    print("🤖 Bot AutoKick aktif dan memantau grup...")
     app.run_polling(stop_signals=None)
 
 

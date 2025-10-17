@@ -1,1 +1,1 @@
-worker: python main.py
+/autokick_bot.py

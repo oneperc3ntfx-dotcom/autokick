@@ -10,6 +10,7 @@ from telegram.ext import (
     ChatMemberHandler,
     MessageHandler,
     CallbackQueryHandler,
+    CommandHandler,
     ContextTypes,
     filters,
 )
@@ -146,12 +147,32 @@ async def auto_kick_task(app):
 
         await asyncio.sleep(60)
 
+# === UNBAN MANUAL ===
+async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if update.effective_user.id != ADMIN_ID:
+        await update.message.reply_text("❌ Kamu bukan admin.")
+        return
+
+    if not context.args:
+        await update.message.reply_text("❌ Gunakan: /unban <user_id>")
+        return
+
+    try:
+        user_id = int(context.args[0])
+        await context.bot.unban_chat_member(TARGET_CHAT_ID, user_id)
+        data = load_data()
+        if str(user_id) in data:
+            del data[str(user_id)]
+            save_data(data)
+        await update.message.reply_text(f"✅ User {user_id} berhasil diunban.")
+        print(f"✅ User {user_id} diunban manual oleh admin.")
+    except Exception as e:
+        await update.message.reply_text(f"⚠️ Error: {e}")
+
 # === STARTUP ===
 async def on_start(app):
     asyncio.create_task(auto_kick_task(app))
-    # Kirim pesan ke admin
     await app.bot.send_message(ADMIN_ID, "✅ Bot AutoKick sudah aktif dan memantau grup.")
-    # Kirim pesan ke grup
     await app.bot.send_message(TARGET_CHAT_ID, "👋 Halo, aku datang! Bot AutoKick sudah aktif.")
 
 def main():
@@ -160,6 +181,7 @@ def main():
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_message))
     app.add_handler(CallbackQueryHandler(button_callback))
+    app.add_handler(CommandHandler("unban", unban_command))
     print("🤖 Bot AutoKick aktif dan memantau grup...")
     app.run_polling()
 

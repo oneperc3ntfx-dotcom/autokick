@@ -16,7 +16,7 @@ from telegram.ext import (
 
 # === CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8196752676:AAEWUiQtvwGgwVbh6UDV-RxqwHk-3CYKnGA")
-TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))
+TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1002605110502"))
 ADMIN_ID = int(os.getenv("ADMIN_ID", "1305881282"))
 JKT = pytz.timezone("Asia/Jakarta")
 DATA_FILE = "members.json"

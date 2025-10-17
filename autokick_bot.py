@@ -146,9 +146,14 @@ async def auto_kick_task(app):
 
 # === STARTUP ===
 async def on_start(app):
-    asyncio.create_task(auto_kick_task(app))
+    # Kirim pesan ke admin pribadi
     await app.bot.send_message(ADMIN_ID, "✅ Bot AutoKick sudah aktif dan memantau grup.")
+    # Kirim pesan ke grup target saat deploy
+    await app.bot.send_message(TARGET_CHAT_ID, "👋 Halo! Aku datang dan siap memantau grup. Pilih opsi join untuk member baru.")
+    # Mulai task auto kick
+    asyncio.create_task(auto_kick_task(app))
 
+# === MAIN ===
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
 

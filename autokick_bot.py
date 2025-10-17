@@ -4,16 +4,17 @@ import json
 import asyncio
 from datetime import datetime, timedelta
 import pytz
-from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
+from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
     ApplicationBuilder,
-    ChatMemberHandler,
+    MessageHandler,
     CallbackQueryHandler,
     ContextTypes,
+    filters,
 )
 
 # === CONFIG ===
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8196752676:AAEWUiQtvwGgwVbh6UDV-RxqwHk-3CYKnGA")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))
 JKT = pytz.timezone("Asia/Jakarta")
 DATA_FILE = "members.json"
@@ -29,20 +30,16 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# === MEMBER HANDLER ===
-async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if not update.chat_member:
+# === NEW MEMBER HANDLER (pasti terdeteksi) ===
+async def new_member_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message or not update.message.new_chat_members:
         return
-    chat = update.chat_member.chat
+    chat = update.effective_chat
     if chat.id != TARGET_CHAT_ID:
         return
 
-    old_status = update.chat_member.old_chat_member.status
-    new_status = update.chat_member.new_chat_member.status
-    user = update.chat_member.new_chat_member.user
-
-    if old_status in [ChatMember.LEFT, ChatMember.KICKED] and new_status == ChatMember.MEMBER:
-        data = load_data()
+    data = load_data()
+    for user in update.message.new_chat_members:
         user_id = str(user.id)
         join_time = datetime.now(JKT).isoformat()
         data[user_id] = {
@@ -50,7 +47,6 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             "join_time": join_time,
             "status": "pending"
         }
-        save_data(data)
 
         keyboard = InlineKeyboardMarkup([
             [InlineKeyboardButton("✅ Permanen", callback_data=f"perm_{user_id}")],
@@ -63,6 +59,8 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
             reply_markup=keyboard
         )
         print(f"👋 {user.full_name} joined. Awaiting choice...")
+
+    save_data(data)
 
 # === BUTTON HANDLER ===
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -80,7 +78,7 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
         await query.edit_message_text("⏳ Akan dikeluarkan otomatis setelah 24 jam.")
     save_data(data)
 
-# === AUTO KICK TASK ===
+# === AUTO KICK LOOP ===
 async def auto_kick_task(app):
     while True:
         data = load_data()
@@ -92,6 +90,7 @@ async def auto_kick_task(app):
             status = info.get("status", "pending")
             elapsed = now - join_time
 
+            # Tidak memilih dalam 10 menit
             if status == "pending" and elapsed > timedelta(minutes=10):
                 try:
                     await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
@@ -104,6 +103,7 @@ async def auto_kick_task(app):
                 except Exception as e:
                     print(f"⚠️ Kick error: {e}")
 
+            # 24 jam berlalu
             elif status == "24h" and elapsed > timedelta(hours=24):
                 try:
                     await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
@@ -126,7 +126,7 @@ async def on_start(app):
 
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
-    app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
+    app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_message))
     app.add_handler(CallbackQueryHandler(button_callback))
     print("🤖 Bot AutoKick aktif dan memantau grup...")
     app.run_polling()

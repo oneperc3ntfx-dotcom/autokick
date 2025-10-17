@@ -16,8 +16,8 @@ from telegram.ext import (
 
 # === CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN", "8196752676:AAEWUiQtvwGgwVbh6UDV-RxqwHk-3CYKnGA")
-TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))  # ganti ID grup kamu
-ADMIN_ID = int(os.getenv("ADMIN_ID", "1305881282"))  # ID kamu
+TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1305881282"))
 JKT = pytz.timezone("Asia/Jakarta")
 DATA_FILE = "members.json"
 
@@ -34,9 +34,8 @@ def save_data(data):
 
 # === KIRIM OPSI JOIN ===
 async def send_join_options(bot, user, username_display):
-    """Kirim tombol opsi ke grup"""
-    data = load_data()
     user_id = str(user.id)
+    data = load_data()
     join_time = datetime.now(JKT).isoformat()
     data[user_id] = {
         "username": user.username or user.full_name,
@@ -52,8 +51,7 @@ async def send_join_options(bot, user, username_display):
 
     await bot.send_message(
         chat_id=TARGET_CHAT_ID,
-        text=f"👋 {username_display} baru bergabung.\n"
-             f"Silakan pilih opsi dalam **10 menit**, jika tidak akan dikeluarkan otomatis.",
+        text=f"👋 {username_display} baru bergabung.\nSilakan pilih opsi dalam **10 menit**, jika tidak akan dikeluarkan otomatis.",
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
@@ -72,14 +70,18 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = update.chat_member.new_chat_member.status
     user = update.chat_member.new_chat_member.user
 
-    print(f"🔄 {user.full_name} status berubah dari {old_status} → {new_status}")
+    print(f"🔄 ChatMember update: {user.full_name} {old_status} → {new_status}")
 
+    # Member baru yang bergabung langsung
     if old_status in [ChatMember.LEFT, ChatMember.KICKED] and new_status == ChatMember.MEMBER:
         await send_join_options(context.bot, user, f"@{user.username or user.full_name}")
 
 # === MESSAGE HANDLER UNTUK JOIN VIA LINK ===
 async def new_member_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    if not update.message:
+        return
     for user in update.message.new_chat_members:
+        print(f"🔔 New member detected via link: {user.full_name}")
         await send_join_options(context.bot, user, f"@{user.username or user.full_name} (via link)")
 
 # === BUTTON CALLBACK ===
@@ -146,21 +148,18 @@ async def auto_kick_task(app):
 
 # === STARTUP ===
 async def on_start(app):
-    # Kirim pesan ke admin pribadi
-    await app.bot.send_message(ADMIN_ID, "✅ Bot AutoKick sudah aktif dan memantau grup.")
-    # Kirim pesan ke grup target saat deploy
-    await app.bot.send_message(TARGET_CHAT_ID, "👋 Halo! Aku datang dan siap memantau grup. Pilih opsi join untuk member baru.")
-    # Mulai task auto kick
     asyncio.create_task(auto_kick_task(app))
+    # Kirim pesan ke admin
+    await app.bot.send_message(ADMIN_ID, "✅ Bot AutoKick sudah aktif dan memantau grup.")
+    # Kirim pesan ke grup
+    await app.bot.send_message(TARGET_CHAT_ID, "👋 Halo, aku datang! Bot AutoKick sudah aktif.")
 
-# === MAIN ===
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
-
+    # Handlers
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_message))
     app.add_handler(CallbackQueryHandler(button_callback))
-
     print("🤖 Bot AutoKick aktif dan memantau grup...")
     app.run_polling()
 

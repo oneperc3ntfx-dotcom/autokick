@@ -1,42 +1,72 @@
-#!/usr/bin/env python3
-import os
 import json
 import asyncio
+import os
 from datetime import datetime, timedelta
-import pytz
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ChatMember
+from telegram import Update, ChatMember, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import (
-    ApplicationBuilder, ContextTypes,
-    ChatMemberHandler, CallbackQueryHandler
+    ApplicationBuilder,
+    ChatMemberHandler,
+    CallbackQueryHandler,
+    ContextTypes,
 )
+import pytz
 
-# =====================
+# =============================
 # KONFIGURASI
-# =====================
-BOT_TOKEN = os.getenv("BOT_TOKEN", "ISI_TOKEN_KAMU")
+# =============================
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8196752676:AAEWUiQtvwGgwVbh6UDV-RxqwHk-3CYKnGA")
 TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1003143901775"))
 JKT = pytz.timezone("Asia/Jakarta")
+
 DATA_FILE = "members.json"
 
-# =====================
-# UTILITAS FILE
-# =====================
+
+# =============================
+# UTILITAS
+# =============================
 def load_data():
     if os.path.exists(DATA_FILE):
         with open(DATA_FILE, "r") as f:
             return json.load(f)
     return {}
 
+
 def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# =====================
+
+# =============================
+# CALLBACK TOMBOL USER
+# =============================
+async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    user_id = str(query.from_user.id)
+    data = load_data()
+
+    if user_id not in data:
+        await query.answer("Data kamu tidak ditemukan.")
+        return
+
+    if query.data == "permanent":
+        data[user_id]["mode"] = "permanent"
+        save_data(data)
+        await query.edit_message_text("✅ Kamu dipilih sebagai anggota *permanent*.")
+    elif query.data == "24jam":
+        data[user_id]["mode"] = "24jam"
+        save_data(data)
+        await query.edit_message_text("✅ Kamu akan otomatis dikeluarkan setelah 24 jam.")
+
+    await query.answer()
+
+
+# =============================
 # EVENT MEMBER JOIN
-# =====================
+# =============================
 async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.chat_member:
         return
+
     chat = update.chat_member.chat
     if chat.id != TARGET_CHAT_ID:
         return
@@ -45,58 +75,40 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = update.chat_member.new_chat_member.status
     user = update.chat_member.new_chat_member.user
 
-    # hanya saat baru join
     if old_status in [ChatMember.LEFT, ChatMember.KICKED] and new_status == ChatMember.MEMBER:
         data = load_data()
         user_id = str(user.id)
-        now = datetime.now(JKT).isoformat()
-        data[user_id] = {"username": user.username or user.full_name, "join_time": now, "mode": None}
+        join_time = datetime.now(JKT).isoformat()
+        data[user_id] = {
+            "username": user.username or user.full_name,
+            "join_time": join_time,
+            "mode": None,  # default belum pilih
+        }
         save_data(data)
 
-        keyboard = [
+        keyboard = InlineKeyboardMarkup([
             [
-                InlineKeyboardButton("🔒 Permanen", callback_data=f"permanent:{user_id}"),
-                InlineKeyboardButton("⏳ 24 Jam", callback_data=f"24h:{user_id}")
+                InlineKeyboardButton("✅ Permanent", callback_data="permanent"),
+                InlineKeyboardButton("⏳ 24 Jam", callback_data="24jam")
             ]
-        ]
-        reply_markup = InlineKeyboardMarkup(keyboard)
+        ])
 
         await context.bot.send_message(
             chat_id=TARGET_CHAT_ID,
-            text=f"👋 @{user.username or user.full_name} baru bergabung.\n"
-                 f"Silakan pilih durasi keanggotaan dalam 10 menit, "
-                 f"jika tidak akan otomatis dikeluarkan.",
-            reply_markup=reply_markup
+            text=(
+                f"👋 @{user.username or user.full_name} baru bergabung.\n"
+                f"Pilih jenis keanggotaan kamu dalam 10 menit:\n"
+                f"- Permanent: Tidak akan dikeluarkan\n"
+                f"- 24 Jam: Dikeluarkan otomatis setelah 24 jam\n\n"
+                f"Jika tidak memilih dalam 10 menit, kamu akan dikeluarkan."
+            ),
+            reply_markup=keyboard
         )
-        print(f"✅ {user.full_name} join, menunggu pilihan.")
 
-# =====================
-# HANDLER PILIHAN USER
-# =====================
-async def button_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    query = update.callback_query
-    await query.answer()
-    data = load_data()
-    user_id = query.data.split(":")[1]
-    user_choice = query.data.split(":")[0]
 
-    if user_id not in data:
-        await query.edit_message_text("⚠️ Data tidak ditemukan.")
-        return
-
-    data[user_id]["mode"] = user_choice
-    save_data(data)
-
-    if user_choice == "permanent":
-        await query.edit_message_text("✅ Keanggotaan diatur menjadi *permanen*.", parse_mode="Markdown")
-        print(f"🔒 {data[user_id]['username']} set permanen.")
-    elif user_choice == "24h":
-        await query.edit_message_text("✅ Keanggotaan diatur selama *24 jam*.", parse_mode="Markdown")
-        print(f"⏳ {data[user_id]['username']} set 24 jam.")
-
-# =====================
-# AUTO-KICK TASK
-# =====================
+# =============================
+# TUGAS AUTO KICK
+# =============================
 async def auto_kick_task(app):
     while True:
         data = load_data()
@@ -104,48 +116,60 @@ async def auto_kick_task(app):
         changed = False
 
         for user_id, info in list(data.items()):
-            mode = info.get("mode")
             join_time = datetime.fromisoformat(info["join_time"])
+            mode = info.get("mode")
 
             if mode == "permanent":
-                continue
-            elif mode == "24h" and now - join_time >= timedelta(hours=24):
-                reason = "24 jam"
-            elif mode is None and now - join_time >= timedelta(minutes=10):
-                reason = "tidak memilih (10 menit)"
-            else:
-                continue
+                continue  # tidak dikeluarkan sama sekali
 
-            try:
-                await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
-                await app.bot.unban_chat_member(TARGET_CHAT_ID, int(user_id))
-                await app.bot.send_message(
-                    chat_id=TARGET_CHAT_ID,
-                    text=f"❌ @{info['username']} dikeluarkan ({reason})."
-                )
-                print(f"❌ {info['username']} dikeluarkan ({reason}).")
-                del data[user_id]
-                changed = True
-            except Exception as e:
-                print(f"⚠️ Gagal kick {user_id}: {e}")
+            # Belum memilih → keluarkan setelah 10 menit
+            if mode is None and (now - join_time) >= timedelta(minutes=10):
+                try:
+                    await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
+                    await app.bot.unban_chat_member(TARGET_CHAT_ID, int(user_id))
+                    await app.bot.send_message(
+                        chat_id=TARGET_CHAT_ID,
+                        text=f"❌ @{info['username']} tidak memilih, dikeluarkan setelah 10 menit."
+                    )
+                    del data[user_id]
+                    changed = True
+                except Exception as e:
+                    print(f"⚠️ Gagal kick {user_id}: {e}")
+
+            # Mode 24 jam → keluarkan setelah 24 jam
+            elif mode == "24jam" and (now - join_time) >= timedelta(hours=24):
+                try:
+                    await app.bot.ban_chat_member(TARGET_CHAT_ID, int(user_id))
+                    await app.bot.unban_chat_member(TARGET_CHAT_ID, int(user_id))
+                    await app.bot.send_message(
+                        chat_id=TARGET_CHAT_ID,
+                        text=f"⏰ @{info['username']} dikeluarkan setelah 24 jam di grup."
+                    )
+                    del data[user_id]
+                    changed = True
+                except Exception as e:
+                    print(f"⚠️ Gagal kick {user_id}: {e}")
 
         if changed:
             save_data(data)
 
-        await asyncio.sleep(60)  # cek tiap menit
+        await asyncio.sleep(60)  # cek setiap 1 menit
 
-# =====================
-# MAIN FUNCTION
-# =====================
-async def main():
+
+# =============================
+# MAIN
+# =============================
+def main():
     app = ApplicationBuilder().token(BOT_TOKEN).build()
+
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
-    app.add_handler(CallbackQueryHandler(button_click))
+    app.add_handler(CallbackQueryHandler(button_callback))
 
     asyncio.create_task(auto_kick_task(app))
 
     print("🤖 Bot AutoKick aktif dan memantau grup...")
-    await app.run_polling()
+    app.run_polling(stop_signals=None)
+
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    main()

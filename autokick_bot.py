@@ -33,8 +33,9 @@ def save_data(data):
     with open(DATA_FILE, "w") as f:
         json.dump(data, f, indent=2)
 
-# === KIRIM OPSI JOIN ===
-async def send_join_options(bot, user, username_display):
+# === KIRIM OPSI KE ADMIN ===
+async def send_options_to_admin(bot, user):
+    """Kirim tombol pilihan ke chat pribadi admin"""
     user_id = str(user.id)
     data = load_data()
     join_time = datetime.now(JKT).isoformat()
@@ -51,18 +52,16 @@ async def send_join_options(bot, user, username_display):
     ])
 
     await bot.send_message(
-        chat_id=TARGET_CHAT_ID,
-        text=f"👋 {username_display} baru bergabung.\nSilakan pilih opsi dalam **10 menit**, jika tidak akan dikeluarkan otomatis.",
-        reply_markup=keyboard,
-        parse_mode="Markdown"
+        chat_id=ADMIN_ID,
+        text=f"👤 Member baru: @{user.username or user.full_name}\nPilih opsi:",
+        reply_markup=keyboard
     )
-    print(f"👋 {username_display} joined, menunggu pilihan...")
+    print(f"🔔 Opsi untuk @{user.username or user.full_name} dikirim ke admin.")
 
 # === CHAT MEMBER HANDLER ===
 async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.chat_member:
         return
-
     chat = update.chat_member.chat
     if chat.id != TARGET_CHAT_ID:
         return
@@ -71,20 +70,27 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
     new_status = update.chat_member.new_chat_member.status
     user = update.chat_member.new_chat_member.user
 
-    print(f"🔄 ChatMember update: {user.full_name} {old_status} → {new_status}")
-
+    # Member baru masuk → ucapkan selamat datang di grup
     if old_status in [ChatMember.LEFT, ChatMember.KICKED] and new_status == ChatMember.MEMBER:
-        await send_join_options(context.bot, user, f"@{user.username or user.full_name}")
+        await context.bot.send_message(
+            chat_id=TARGET_CHAT_ID,
+            text=f"👋 Selamat datang @{user.username or user.full_name}!\n💰 Semoga berhasil cuan! 🚀"
+        )
+        await send_options_to_admin(context.bot, user)
 
 # === MESSAGE HANDLER UNTUK JOIN VIA LINK ===
 async def new_member_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     if not update.message:
         return
     for user in update.message.new_chat_members:
-        print(f"🔔 New member detected via link: {user.full_name}")
-        await send_join_options(context.bot, user, f"@{user.username or user.full_name} (via link)")
+        # Selamat datang di grup
+        await context.bot.send_message(
+            chat_id=TARGET_CHAT_ID,
+            text=f"👋 Selamat datang @{user.username or user.full_name}!\n💰 Semoga berhasil cuan! 🚀"
+        )
+        await send_options_to_admin(context.bot, user)
 
-# === BUTTON CALLBACK ===
+# === BUTTON CALLBACK ADMIN ===
 async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
@@ -96,10 +102,10 @@ async def button_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     if query.data.startswith("perm"):
         data[user_id]["status"] = "permanent"
-        await query.edit_message_text("✅ Ditetapkan permanen, tidak akan dikeluarkan.")
+        await query.edit_message_text(f"✅ @{data[user_id]['username']} ditetapkan permanen.")
     elif query.data.startswith("24h"):
         data[user_id]["status"] = "24h"
-        await query.edit_message_text("⏳ Akan dikeluarkan otomatis setelah 24 jam.")
+        await query.edit_message_text(f"⏳ @{data[user_id]['username']} akan dikeluarkan otomatis setelah 24 jam.")
 
     save_data(data)
 
@@ -137,7 +143,6 @@ async def auto_kick_task(app):
                     print(f"❌ Kicked @{info['username']} (24 jam habis).")
                     del data[user_id]
                     changed = True
-
             except Exception as e:
                 print(f"⚠️ Kick error: {e}")
 
@@ -145,41 +150,6 @@ async def auto_kick_task(app):
             save_data(data)
 
         await asyncio.sleep(60)
-
-# === UNBAN MANUAL ===
-async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    if update.effective_user.id != ADMIN_ID:
-        await update.message.reply_text("❌ Kamu bukan admin.")
-        return
-
-    if not context.args:
-        await update.message.reply_text("❌ Gunakan: /unban <user_id atau username>")
-        return
-
-    target = context.args[0]
-    data = load_data()
-
-    try:
-        user_id = int(target)
-    except ValueError:
-        user_id = None
-        for uid, info in data.items():
-            if info["username"].lstrip("@").lower() == target.lower():
-                user_id = int(uid)
-                break
-        if user_id is None:
-            await update.message.reply_text(f"❌ User '{target}' tidak ditemukan di data.")
-            return
-
-    try:
-        await context.bot.unban_chat_member(TARGET_CHAT_ID, user_id)
-        if str(user_id) in data:
-            del data[str(user_id)]
-            save_data(data)
-        await update.message.reply_text(f"✅ User {target} berhasil diunban.")
-        print(f"✅ User {target} diunban manual oleh admin.")
-    except Exception as e:
-        await update.message.reply_text(f"⚠️ Error: {e}")
 
 # === STARTUP ===
 async def on_start(app):
@@ -190,11 +160,9 @@ async def on_start(app):
 # === MAIN ===
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
-    # Handlers
     app.add_handler(ChatMemberHandler(member_update, ChatMemberHandler.CHAT_MEMBER))
     app.add_handler(MessageHandler(filters.StatusUpdate.NEW_CHAT_MEMBERS, new_member_message))
     app.add_handler(CallbackQueryHandler(button_callback))
-    app.add_handler(CommandHandler("unban", unban_command))
     print("🤖 Bot AutoKick aktif dan memantau grup...")
     app.run_polling()
 

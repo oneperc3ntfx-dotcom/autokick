@@ -17,8 +17,8 @@ from telegram.ext import (
 
 # === CONFIG ===
 BOT_TOKEN = os.getenv("BOT_TOKEN", "7868818205:AAEXyn7KXmgVzW2wSZuJuXpwcQtVP6BFL2E")
-TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1002605110502"))
-ADMIN_ID = int(os.getenv("ADMIN_ID", "1305881282"))
+TARGET_CHAT_ID = int(os.getenv("TARGET_CHAT_ID", "-1002605110502"))  # ID grup
+ADMIN_ID = int(os.getenv("ADMIN_ID", "1305881282"))  # ID admin
 JKT = pytz.timezone("Asia/Jakarta")
 DATA_FILE = "members.json"
 
@@ -73,7 +73,6 @@ async def member_update(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     print(f"🔄 ChatMember update: {user.full_name} {old_status} → {new_status}")
 
-    # Member baru yang bergabung langsung
     if old_status in [ChatMember.LEFT, ChatMember.KICKED] and new_status == ChatMember.MEMBER:
         await send_join_options(context.bot, user, f"@{user.username or user.full_name}")
 
@@ -154,18 +153,31 @@ async def unban_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("❌ Gunakan: /unban <user_id>")
+        await update.message.reply_text("❌ Gunakan: /unban <user_id atau username>")
         return
 
+    target = context.args[0]
+    data = load_data()
+
     try:
-        user_id = int(context.args[0])
+        user_id = int(target)
+    except ValueError:
+        user_id = None
+        for uid, info in data.items():
+            if info["username"].lstrip("@").lower() == target.lower():
+                user_id = int(uid)
+                break
+        if user_id is None:
+            await update.message.reply_text(f"❌ User '{target}' tidak ditemukan di data.")
+            return
+
+    try:
         await context.bot.unban_chat_member(TARGET_CHAT_ID, user_id)
-        data = load_data()
         if str(user_id) in data:
             del data[str(user_id)]
             save_data(data)
-        await update.message.reply_text(f"✅ User {user_id} berhasil diunban.")
-        print(f"✅ User {user_id} diunban manual oleh admin.")
+        await update.message.reply_text(f"✅ User {target} berhasil diunban.")
+        print(f"✅ User {target} diunban manual oleh admin.")
     except Exception as e:
         await update.message.reply_text(f"⚠️ Error: {e}")
 
@@ -175,6 +187,7 @@ async def on_start(app):
     await app.bot.send_message(ADMIN_ID, "✅ Bot AutoKick sudah aktif dan memantau grup.")
     await app.bot.send_message(TARGET_CHAT_ID, "👋 Halo, aku datang! Bot AutoKick sudah aktif.")
 
+# === MAIN ===
 def main():
     app = ApplicationBuilder().token(BOT_TOKEN).post_init(on_start).build()
     # Handlers

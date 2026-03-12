@@ -10,16 +10,14 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 BOT_TOKEN = "7678173969:AAFsD26EC2p4vyeTjxgGVSH3kMi_obIJ3k0"
 
+bot = Bot(token=BOT_TOKEN)
+
 # ==============================
 # CHANNEL ID
 # ==============================
 
-CHANNELS = [
-    "-1003142698012",
-    "-1002782196938"
-]
-
-bot = Bot(token=BOT_TOKEN)
+PUBLIC_CHANNEL = "-1003142698012"
+VIP_CHANNEL = "-1002782196938"
 
 # ==============================
 # GREETING PAGI
@@ -30,67 +28,70 @@ messages = {
 "Monday": """🌅 Good Morning Traders! Happy Monday!
 
 Hari baru, minggu baru, peluang baru di market! 📈
-Ingat, trader sukses bukan yang selalu profit, tapi yang konsisten dengan disiplin dan manajemen risiko.
 
-Hari ini fokus kita:
+Trader sukses bukan yang selalu profit,
+tetapi yang disiplin dengan strategi dan manajemen risiko.
+
+Fokus trading hari ini:
 ✅ Analisa sebelum entry
 ✅ Jangan FOMO
 ✅ Ikuti trading plan
 
-Market selalu memberi peluang bagi yang sabar.
-Mari mulai minggu ini dengan mindset professional trader 💪
+Semoga hari ini market memberikan peluang terbaik 💰
 
-Semoga hari ini penuh pips! 🔥
 Let's catch the market together! 🚀""",
 
 "Tuesday": """🌤 Selamat Pagi Trader Hebat! Happy Tuesday!
 
-Market sudah bergerak sejak dini hari, dan tugas kita bukan mengejar market… tapi menunggu setup terbaik 🎯
+Market sudah bergerak sejak dini hari,
+dan tugas kita bukan mengejar market… tetapi menunggu setup terbaik 🎯
 
-Reminder pagi ini:
+Reminder hari ini:
 📊 Ikuti analisa
 📉 Jangan overtrade
-🧠 Trading pakai logika, bukan emosi
+🧠 Trading pakai logika bukan emosi
 
 Semoga hari ini kita diberikan setup yang clean dan profit maksimal 💰📈""",
 
 "Wednesday": """🌅 Good Morning Traders! Happy Wednesday!
 
-Sudah pertengahan minggu! 🔥
-Market biasanya mulai menunjukkan arah yang lebih jelas.
+Sudah pertengahan minggu 🔥
 
-Tips mentor pagi ini:
+Biasanya market mulai menunjukkan arah yang lebih jelas.
+
+Tips mentor hari ini:
 📍 Fokus pada key level
-📍 Tunggu konfirmasi sebelum entry
-📍 Risk kecil, peluang besar
+📍 Tunggu konfirmasi
+📍 Risk kecil peluang besar
 
-Tetap disiplin dan nikmati proses menjadi trader yang konsisten 💪📊""",
+Tetap disiplin dan nikmati proses menjadi trader konsisten 💪""",
 
 "Thursday": """☀️ Selamat Pagi Traders! Happy Thursday!
 
-Biasanya menjelang akhir minggu, market mulai memberikan pergerakan yang menarik 📈
+Biasanya menjelang akhir minggu,
+market mulai memberikan pergerakan menarik 📈
 
-Checklist trader pagi ini:
+Checklist trader hari ini:
 🔎 Analisa market structure
 📊 Perhatikan news penting
 ⚖️ Jaga risk management
 
-Semoga hari ini kita bisa menangkap momentum terbaik di market 🚀💰""",
+Semoga hari ini kita bisa menangkap momentum terbaik 🚀""",
 
 "Friday": """🌅 Good Morning Traders! Happy Friday!
 
-Hari terakhir trading minggu ini! 🔥
-Fokus kita hari ini bukan hanya profit, tapi menutup minggu dengan disiplin.
+Hari terakhir trading minggu ini 🔥
 
+Fokus kita hari ini:
 📉 Hindari revenge trading
 📊 Ambil setup yang jelas saja
 💡 Protect profit minggu ini
 
-Semoga closing minggu ini penuh pips! 💰"""
+Semoga closing minggu ini penuh pips 💰"""
 }
 
 # ==============================
-# SEND GREETING
+# GREETING FUNCTION
 # ==============================
 
 def send_greeting():
@@ -102,8 +103,12 @@ def send_greeting():
 
         text = messages[today]
 
-        for channel in CHANNELS:
-            bot.send_message(chat_id=channel, text=text)
+        try:
+            bot.send_message(chat_id=PUBLIC_CHANNEL, text=text)
+            bot.send_message(chat_id=VIP_CHANNEL, text=text)
+            print("Greeting sent")
+        except Exception as e:
+            print(f"Error sending greeting: {e}")
 
 # ==============================
 # POLL MARKET
@@ -122,14 +127,26 @@ Vote sekarang dan lihat mayoritas trader memilih arah market 🔥"""
         "📉 SELL / Bearish"
     ]
 
-    for channel in CHANNELS:
+    try:
 
         bot.send_poll(
-            chat_id=channel,
+            chat_id=PUBLIC_CHANNEL,
             question=question,
             options=options,
             is_anonymous=False
         )
+
+        bot.send_poll(
+            chat_id=VIP_CHANNEL,
+            question=question,
+            options=options,
+            is_anonymous=False
+        )
+
+        print("Poll sent")
+
+    except Exception as e:
+        print(f"Error sending poll: {e}")
 
 # ==============================
 # NIGHT MESSAGE
@@ -137,36 +154,46 @@ Vote sekarang dan lihat mayoritas trader memilih arah market 🔥"""
 
 def send_night_message():
 
-    text = """🌙 Selamat Malam Traders
+    message_public = """🌙 Selamat Malam Traders
 
 Market hari ini telah memberikan banyak pergerakan.
+
 Bagi yang sudah profit hari ini, selamat! 💰
-Bagi yang belum, ingat bahwa trading adalah proses belajar yang konsisten.
+Bagi yang belum, jadikan hari ini sebagai pelajaran untuk menjadi trader yang lebih baik.
+
+Ingat:
+Trader sukses bukan yang selalu menang,
+tetapi yang konsisten belajar dan disiplin menjalankan strategi.
+
+Istirahat yang cukup malam ini,
+karena market besok selalu memberikan peluang baru 📈
+
+See you tomorrow traders 🚀
+"""
+
+    message_vip = """🌙 Selamat Malam Traders
+
+Market hari ini kembali memberikan pergerakan menarik pada XAUUSD.
+
+Banyak trader sudah mulai memanfaatkan peluang tersebut dengan bantuan analisa yang lebih terarah.
 
 ━━━━━━━━━━━━━━━
 
 🚨 Banyak Trader Sudah Mulai Profit dari Analisa AI XAUUSD… Kamu Masih Nonton?
 
-Setiap hari market Gold (XAUUSD) bergerak puluhan hingga ratusan pips 📈
+Setiap hari market Gold bergerak puluhan hingga ratusan pips 📈  
 Dan banyak member kami sudah mulai menangkap peluang tersebut bersama komunitas VIP.
 
-Pertanyaannya sekarang…
+Di Channel VIP kamu akan mendapatkan:
 
-❓ Kamu mau ikut ambil peluangnya
-atau hanya melihat orang lain yang cuan?
-
-Di Channel VIP, kamu akan mendapatkan:
-
-🔥 Analisa market harian XAUUSD
-🤖 Sistem analisa dengan bantuan AI
-📊 Potensi setup entry yang jelas
-🧠 Edukasi mindset & manajemen risiko
+🔥 Analisa market harian XAUUSD  
+🤖 Sistem analisa dengan bantuan AI  
+📊 Setup entry yang lebih jelas  
+🧠 Edukasi mindset & manajemen risiko  
 👥 Komunitas trader yang aktif
 
-⚠️ Jangan sampai kamu menyesal karena terlambat join.
-
 Market selalu bergerak…
-tapi peluang terbaik biasanya dimanfaatkan oleh trader yang siap.
+tetapi peluang terbaik biasanya dimanfaatkan oleh trader yang siap.
 
 ━━━━━━━━━━━━━━━
 
@@ -188,21 +215,27 @@ https://t.me/+nPQJou-Y-tw5NzQ1
 
 ━━━━━━━━━━━━━━━
 
-💰 Kesempatan tidak datang dua kali.
-
 Jika kamu serius ingin belajar trading dan entry bersama komunitas,
-hubungi admin sekarang sebelum kamu melewatkan peluang berikutnya.
+hubungi admin sekarang.
 
 📩 Chat Admin
 👇👇👇
 @ADMOnePercentsFX
 """
 
-    for channel in CHANNELS:
-        bot.send_message(chat_id=channel, text=text)
+    try:
+
+        bot.send_message(chat_id=PUBLIC_CHANNEL, text=message_public)
+
+        bot.send_message(chat_id=VIP_CHANNEL, text=message_vip)
+
+        print("Night message sent")
+
+    except Exception as e:
+        print(f"Error sending night message: {e}")
 
 # ==============================
-# PRIVATE CHAT
+# PRIVATE CHAT REPLY
 # ==============================
 
 def start(update: Update, context: CallbackContext):
@@ -222,12 +255,11 @@ def reply_message(update: Update, context: CallbackContext):
 
     if "ping" in text:
         update.message.reply_text("🏓 Pong! Bot aktif dan berjalan dengan normal.")
-
     else:
         update.message.reply_text("Bot aktif ✅")
 
 # ==============================
-# HANDLER
+# TELEGRAM HANDLER
 # ==============================
 
 updater = Updater(BOT_TOKEN, use_context=True)

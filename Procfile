@@ -1,1 +1,1 @@
-worker: python bot.py
+worker: python autokick_bot.py

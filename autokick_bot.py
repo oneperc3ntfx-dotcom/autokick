@@ -101,7 +101,7 @@ See you at the top traders! 🚀"""
 }
 
 # ==============================
-# SEND GREETING FUNCTION
+# GREETING FUNCTION
 # ==============================
 
 def send_greeting():
@@ -116,9 +116,38 @@ def send_greeting():
         for channel in CHANNELS:
             try:
                 bot.send_message(chat_id=channel, text=text)
-                print(f"Message sent to {channel}")
+                print(f"Greeting sent to {channel}")
             except Exception as e:
-                print(f"Error sending message: {e}")
+                print(f"Error sending greeting: {e}")
+
+# ==============================
+# MARKET POLL FUNCTION
+# ==============================
+
+def send_market_poll():
+
+    question = """📊 *Market Sentiment Poll*
+
+Menurut kamu arah **XAUUSD (Gold)** hari ini akan kemana? 🤔
+
+Vote sekarang dan lihat mayoritas trader memilih arah market! 🔥"""
+
+    options = [
+        "📈 BUY / Bullish",
+        "📉 SELL / Bearish"
+    ]
+
+    for channel in CHANNELS:
+        try:
+            bot.send_poll(
+                chat_id=channel,
+                question=question,
+                options=options,
+                is_anonymous=False
+            )
+            print(f"Poll sent to {channel}")
+        except Exception as e:
+            print(f"Error sending poll: {e}")
 
 # ==============================
 # PRIVATE CHAT REPLY
@@ -128,8 +157,10 @@ def start(update: Update, context: CallbackContext):
 
     update.message.reply_text(
         "🤖 Bot aktif!\n\n"
-        "Bot ini mengirim greeting otomatis ke channel setiap hari kerja jam 07:00 WIB.\n\n"
-        "Kirim 'ping' untuk mengecek status bot."
+        "Bot ini mengirim:\n"
+        "🌅 Greeting otomatis jam 07:00 WIB\n"
+        "📊 Polling market jam 08:30 WIB\n\n"
+        "Kirim 'ping' untuk cek status bot."
     )
 
 def reply_message(update: Update, context: CallbackContext):
@@ -142,8 +173,7 @@ def reply_message(update: Update, context: CallbackContext):
     else:
         update.message.reply_text(
             "👋 Halo!\n\n"
-            "Bot sedang aktif.\n"
-            "Greeting otomatis dikirim setiap Senin - Jumat jam 07:00 WIB."
+            "Bot sedang aktif dan berjalan normal."
         )
 
 # ==============================
@@ -162,6 +192,7 @@ dp.add_handler(MessageHandler(Filters.text & ~Filters.command, reply_message))
 
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 
+# Greeting jam 07:00
 scheduler.add_job(
     send_greeting,
     "cron",
@@ -170,9 +201,18 @@ scheduler.add_job(
     minute=0
 )
 
+# Poll jam 08:30
+scheduler.add_job(
+    send_market_poll,
+    "cron",
+    day_of_week="mon-fri",
+    hour=8,
+    minute=30
+)
+
 scheduler.start()
 
-print("Bot running... Greeting will be sent every weekday at 07:00 WIB")
+print("Bot running... Greeting 07:00 | Poll 08:30")
 
 # ==============================
 # START BOT

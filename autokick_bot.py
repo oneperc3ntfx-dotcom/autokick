@@ -1,11 +1,18 @@
-import os
 import pytz
 from datetime import datetime
 from telegram import Update, Bot
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
 from apscheduler.schedulers.background import BackgroundScheduler
 
-BOT_TOKEN = os.getenv("7678173969:AAEUvVsRqbsHV-oUeky54CVytf_9nU9Fi5c")
+# ==============================
+# BOT TOKEN
+# ==============================
+
+BOT_TOKEN = "ISI_TOKEN_BOT_KAMU_DISINI"
+
+# ==============================
+# CHANNEL ID
+# ==============================
 
 CHANNELS = [
     "-1003142698012",
@@ -14,8 +21,13 @@ CHANNELS = [
 
 bot = Bot(token=BOT_TOKEN)
 
+# ==============================
+# GREETING MESSAGES
+# ==============================
+
 messages = {
-    "Monday": """🌅 Good Morning Traders! Happy Monday!
+
+"Monday": """🌅 Good Morning Traders! Happy Monday!
 
 Hari baru, minggu baru, peluang baru di market! 📈
 Ingat, trader sukses bukan yang selalu profit, tapi yang konsisten dengan disiplin dan manajemen risiko.
@@ -31,7 +43,7 @@ Mari mulai minggu ini dengan mindset professional trader 💪
 Semoga hari ini penuh pips! 🔥
 Let's catch the market together! 🚀""",
 
-    "Tuesday": """🌤 Selamat Pagi Trader Hebat! Happy Tuesday!
+"Tuesday": """🌤 Selamat Pagi Trader Hebat! Happy Tuesday!
 
 Market sudah bergerak sejak dini hari, dan tugas kita bukan mengejar market… tapi menunggu setup terbaik 🎯
 
@@ -44,7 +56,7 @@ Trader profesional tahu kapan masuk market dan kapan menunggu.
 
 Semoga hari ini kita diberikan setup yang clean dan profit maksimal 💰📈""",
 
-    "Wednesday": """🌅 Good Morning Traders! Happy Wednesday!
+"Wednesday": """🌅 Good Morning Traders! Happy Wednesday!
 
 Sudah pertengahan minggu! 🔥
 Market biasanya mulai menunjukkan arah yang lebih jelas.
@@ -58,7 +70,7 @@ Ingat, 1 trade bagus lebih baik daripada 10 trade terburu-buru.
 
 Tetap disiplin dan nikmati proses menjadi trader yang konsisten 💪📊""",
 
-    "Thursday": """☀️ Selamat Pagi Traders! Happy Thursday!
+"Thursday": """☀️ Selamat Pagi Traders! Happy Thursday!
 
 Biasanya menjelang akhir minggu, market mulai memberikan pergerakan yang menarik 📈
 
@@ -72,7 +84,7 @@ Profit besar datang dari kesabaran dan strategi yang tepat.
 
 Semoga hari ini kita bisa menangkap momentum terbaik di market 🚀💰""",
 
-    "Friday": """🌅 Good Morning Traders! Happy Friday!
+"Friday": """🌅 Good Morning Traders! Happy Friday!
 
 Hari terakhir trading minggu ini! 🔥
 Fokus kita hari ini bukan hanya profit, tapi menutup minggu dengan disiplin.
@@ -88,12 +100,17 @@ Semoga closing minggu ini penuh pips! 💰
 See you at the top traders! 🚀"""
 }
 
+# ==============================
+# SEND GREETING FUNCTION
+# ==============================
 
 def send_greeting():
+
     tz = pytz.timezone("Asia/Jakarta")
     today = datetime.now(tz).strftime("%A")
 
     if today in messages:
+
         text = messages[today]
 
         for channel in CHANNELS:
@@ -101,32 +118,37 @@ def send_greeting():
                 bot.send_message(chat_id=channel, text=text)
                 print(f"Message sent to {channel}")
             except Exception as e:
-                print(f"Failed sending to {channel}: {e}")
+                print(f"Error sending message: {e}")
 
-
-# ===== REPLY CHAT PRIBADI =====
+# ==============================
+# PRIVATE CHAT REPLY
+# ==============================
 
 def start(update: Update, context: CallbackContext):
+
     update.message.reply_text(
         "🤖 Bot aktif!\n\n"
-        "Bot ini digunakan untuk mengirim greeting otomatis ke channel.\n\n"
-        "Jika kamu melihat pesan ini berarti bot berjalan dengan normal ✅"
+        "Bot ini mengirim greeting otomatis ke channel setiap hari kerja jam 07:00 WIB.\n\n"
+        "Kirim 'ping' untuk mengecek status bot."
     )
 
-
 def reply_message(update: Update, context: CallbackContext):
+
     text = update.message.text.lower()
 
     if "ping" in text:
-        update.message.reply_text("🏓 Pong! Bot aktif dan berjalan dengan baik.")
+        update.message.reply_text("🏓 Pong! Bot aktif dan berjalan dengan normal.")
+
     else:
         update.message.reply_text(
             "👋 Halo!\n\n"
-            "Bot sedang aktif dan mengirim greeting otomatis setiap hari kerja jam 07:00 WIB."
+            "Bot sedang aktif.\n"
+            "Greeting otomatis dikirim setiap Senin - Jumat jam 07:00 WIB."
         )
 
-
-# ===== TELEGRAM HANDLER =====
+# ==============================
+# TELEGRAM HANDLER
+# ==============================
 
 updater = Updater(BOT_TOKEN, use_context=True)
 dp = updater.dispatcher
@@ -134,8 +156,9 @@ dp = updater.dispatcher
 dp.add_handler(CommandHandler("start", start))
 dp.add_handler(MessageHandler(Filters.text & ~Filters.command, reply_message))
 
-
-# ===== SCHEDULER =====
+# ==============================
+# SCHEDULER
+# ==============================
 
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 
@@ -151,7 +174,9 @@ scheduler.start()
 
 print("Bot running... Greeting will be sent every weekday at 07:00 WIB")
 
-# ===== START BOT =====
+# ==============================
+# START BOT
+# ==============================
 
 updater.start_polling()
 updater.idle()

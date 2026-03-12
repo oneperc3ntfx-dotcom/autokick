@@ -1,8 +1,9 @@
 import os
-from telegram import Bot
-from apscheduler.schedulers.blocking import BlockingScheduler
-from datetime import datetime
 import pytz
+from datetime import datetime
+from telegram import Update, Bot
+from telegram.ext import Updater, CommandHandler, MessageHandler, Filters, CallbackContext
+from apscheduler.schedulers.background import BackgroundScheduler
 
 BOT_TOKEN = os.getenv("7678173969:AAEUvVsRqbsHV-oUeky54CVytf_9nU9Fi5c")
 
@@ -11,7 +12,7 @@ CHANNELS = [
     "-1002782196938"
 ]
 
-bot = Bot(token=BOT_TOKEN)
+bot = Bot(token=7678173969:AAEUvVsRqbsHV-oUeky54CVytf_9nU9Fi5c)
 
 messages = {
     "Monday": """🌅 Good Morning Traders! Happy Monday!
@@ -103,7 +104,40 @@ def send_greeting():
                 print(f"Failed sending to {channel}: {e}")
 
 
-scheduler = BlockingScheduler(timezone="Asia/Jakarta")
+# ===== REPLY CHAT PRIBADI =====
+
+def start(update: Update, context: CallbackContext):
+    update.message.reply_text(
+        "🤖 Bot aktif!\n\n"
+        "Bot ini digunakan untuk mengirim greeting otomatis ke channel.\n\n"
+        "Jika kamu melihat pesan ini berarti bot berjalan dengan normal ✅"
+    )
+
+
+def reply_message(update: Update, context: CallbackContext):
+    text = update.message.text.lower()
+
+    if "ping" in text:
+        update.message.reply_text("🏓 Pong! Bot aktif dan berjalan dengan baik.")
+    else:
+        update.message.reply_text(
+            "👋 Halo!\n\n"
+            "Bot sedang aktif dan mengirim greeting otomatis setiap hari kerja jam 07:00 WIB."
+        )
+
+
+# ===== TELEGRAM HANDLER =====
+
+updater = Updater(BOT_TOKEN, use_context=True)
+dp = updater.dispatcher
+
+dp.add_handler(CommandHandler("start", start))
+dp.add_handler(MessageHandler(Filters.text & ~Filters.command, reply_message))
+
+
+# ===== SCHEDULER =====
+
+scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 
 scheduler.add_job(
     send_greeting,
@@ -113,6 +147,11 @@ scheduler.add_job(
     minute=0
 )
 
+scheduler.start()
+
 print("Bot running... Greeting will be sent every weekday at 07:00 WIB")
 
-scheduler.start()
+# ===== START BOT =====
+
+updater.start_polling()
+updater.idle()

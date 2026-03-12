@@ -12,7 +12,7 @@ CHANNELS = [
     "-1002782196938"
 ]
 
-bot = Bot(token=7678173969:AAEUvVsRqbsHV-oUeky54CVytf_9nU9Fi5c)
+bot = Bot(token="7678173969:AAEUvVsRqbsHV-oUeky54CVytf_9nU9Fi5c")
 
 messages = {
     "Monday": """🌅 Good Morning Traders! Happy Monday!

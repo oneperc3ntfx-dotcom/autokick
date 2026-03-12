@@ -8,7 +8,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 # BOT TOKEN
 # ==============================
 
-BOT_TOKEN = 7678173969:AAFsD26EC2p4vyeTjxgGVSH3kMi_obIJ3k0"
+BOT_TOKEN = "7678173969:AAFsD26EC2p4vyeTjxgGVSH3kMi_obIJ3k0"
 
 # ==============================
 # CHANNEL ID

@@ -16,8 +16,8 @@ bot = Bot(token=BOT_TOKEN)
 # CHANNEL ID
 # ==============================
 
-PUBLIC_CHANNEL = "-1002782196938"
-VIP_CHANNEL = "-1003142698012"
+PUBLIC_CHANNEL = "-1003142698012"
+VIP_CHANNEL = "-1002782196938"
 
 # ==============================
 # GREETING PAGI

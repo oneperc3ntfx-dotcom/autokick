@@ -16,8 +16,8 @@ bot = Bot(token=BOT_TOKEN)
 # CHANNEL ID
 # ==============================
 
-PUBLIC_CHANNEL = "-1003142698012"
-VIP_CHANNEL = "-1002782196938"
+PUBLIC_CHANNEL = "-1002782196938"
+VIP_CHANNEL = "-1003142698012"
 
 # ==============================
 # GREETING PAGI
@@ -91,7 +91,7 @@ Semoga closing minggu ini penuh pips 💰"""
 }
 
 # ==============================
-# GREETING FUNCTION
+# GREETING FUNCTION (07:00)
 # ==============================
 
 def send_greeting():
@@ -111,7 +111,37 @@ def send_greeting():
             print(f"Error sending greeting: {e}")
 
 # ==============================
-# POLL MARKET
+# SIGNAL PREPARATION (07:30)
+# PUBLIC CHANNEL ONLY
+# ==============================
+
+def send_signal_preparation():
+
+    message = """⏰ Market Preparation Time
+
+Signal trading akan mulai aktif pada pukul 08:00 WIB.
+
+Sebelum market bergerak lebih aktif, pastikan kamu sudah melakukan persiapan:
+
+💰 Pastikan equity siap
+🧠 Siapkan mental trading yang disiplin
+⚖️ Gunakan money management yang sehat
+🚫 Hindari full margin dan over risk
+
+Trading bukan tentang cepat kaya,
+tetapi tentang konsistensi dan manajemen risiko.
+
+Semoga hari ini market memberikan peluang terbaik untuk kita semua 📈✨
+"""
+
+    try:
+        bot.send_message(chat_id=PUBLIC_CHANNEL, text=message)
+        print("Preparation message sent")
+    except Exception as e:
+        print(f"Error sending preparation message: {e}")
+
+# ==============================
+# POLL MARKET (08:30)
 # ==============================
 
 def send_market_poll():
@@ -149,90 +179,78 @@ Vote sekarang dan lihat mayoritas trader memilih arah market 🔥"""
         print(f"Error sending poll: {e}")
 
 # ==============================
-# NIGHT MESSAGE
+# NIGHT MESSAGE (20:00)
+# VIP CHANNEL ONLY
 # ==============================
 
 def send_night_message():
 
-    message_public = """🌙 Selamat Malam Traders
+    message = """🌙 Selamat Malam Traders
 
 Market hari ini telah memberikan banyak pergerakan.
 
-Bagi yang sudah profit hari ini, selamat! 💰
-Bagi yang belum, jadikan hari ini sebagai pelajaran untuk menjadi trader yang lebih baik.
+Bagi yang sudah profit hari ini, selamat! 💰  
+Bagi yang belum, jangan berkecil hati. Setiap hari di market selalu memberikan pelajaran berharga.
 
-Ingat:
-Trader sukses bukan yang selalu menang,
-tetapi yang konsisten belajar dan disiplin menjalankan strategi.
+Dalam trading, yang paling penting bukan hanya hasil satu trade,
+tetapi konsistensi dalam menjalankan strategi dan manajemen risiko.
 
-Istirahat yang cukup malam ini,
-karena market besok selalu memberikan peluang baru 📈
-
-See you tomorrow traders 🚀
-"""
-
-    message_vip = """🌙 Selamat Malam Traders
-
-Market hari ini kembali memberikan pergerakan menarik pada XAUUSD.
-
-Banyak trader sudah mulai memanfaatkan peluang tersebut dengan bantuan analisa yang lebih terarah.
+Gunakan waktu malam ini untuk:
+📊 Mereview trade hari ini  
+🧠 Belajar dari setiap keputusan yang diambil  
+📈 Mempersiapkan rencana trading untuk esok hari  
 
 ━━━━━━━━━━━━━━━
 
-🚨 Banyak Trader Sudah Mulai Profit dari Analisa AI XAUUSD… Kamu Masih Nonton?
+🚀 Ingin belajar trading lebih terarah?
 
-Setiap hari market Gold bergerak puluhan hingga ratusan pips 📈  
-Dan banyak member kami sudah mulai menangkap peluang tersebut bersama komunitas VIP.
+Kami menyediakan:
+📊 Komunitas trader yang solid
+🤖 Signal dengan analisa AI
+📈 Insight market harian
 
-Di Channel VIP kamu akan mendapatkan:
+Dan semuanya bisa kamu akses gratis.
 
-🔥 Analisa market harian XAUUSD  
-🤖 Sistem analisa dengan bantuan AI  
-📊 Setup entry yang lebih jelas  
-🧠 Edukasi mindset & manajemen risiko  
-👥 Komunitas trader yang aktif
+Jika kamu ingin bergabung, hubungi admin:
 
-Market selalu bergerak…
-tetapi peluang terbaik biasanya dimanfaatkan oleh trader yang siap.
-
-━━━━━━━━━━━━━━━
-
-📌 Gunakan broker yang sama dengan komunitas kami
-
-👉 BROKER HFM
-https://register.hfmtrade-ind.com/sv/en/new-live-account/?refid=333604&acid=s2x4c6usld
-
-📚 Panduan Lengkap:
-
-📌 Cara Daftar HFM
-https://t.me/+in9fqf4PrSYxYTM9
-
-📌 Cara Tautkan ke MT5
-https://t.me/+eb2Ky1Iva2Y5MTRl
-
-📌 Cara Pindah Mitra
-https://t.me/+nPQJou-Y-tw5NzQ1
-
-━━━━━━━━━━━━━━━
-
-Jika kamu serius ingin belajar trading dan entry bersama komunitas,
-hubungi admin sekarang.
-
-📩 Chat Admin
-👇👇👇
-@ADMOnePercentsFX
+📩 @ADMOnePercentsFX
 """
 
     try:
 
-        bot.send_message(chat_id=PUBLIC_CHANNEL, text=message_public)
-
-        bot.send_message(chat_id=VIP_CHANNEL, text=message_vip)
-
+        bot.send_message(chat_id=VIP_CHANNEL, text=message)
         print("Night message sent")
 
     except Exception as e:
         print(f"Error sending night message: {e}")
+
+# ==============================
+# SIGNAL CLOSED (21:30)
+# PUBLIC CHANNEL ONLY
+# ==============================
+
+def send_signal_closed():
+
+    message = """🌙 Trading Session Closed
+
+Signal AI untuk hari ini telah resmi dinonaktifkan.
+
+Semoga hasil trading hari ini memberikan profit yang baik dan membawa keberkahan untuk kita semua 💰✨
+
+Terima kasih untuk disiplin dan kepercayaan kalian mengikuti signal hari ini.
+
+Sekarang saatnya beristirahat dan memulihkan energi.
+
+Besok kita akan kembali menghadapi market dengan strategi yang lebih siap 📊
+
+Selamat beristirahat dan semoga malam kalian menyenangkan 🌙
+"""
+
+    try:
+        bot.send_message(chat_id=PUBLIC_CHANNEL, text=message)
+        print("Signal closed message sent")
+    except Exception as e:
+        print(f"Error sending closed message: {e}")
 
 # ==============================
 # PRIVATE CHAT REPLY
@@ -244,8 +262,10 @@ def start(update: Update, context: CallbackContext):
         "🤖 Bot aktif!\n\n"
         "Schedule bot:\n"
         "🌅 Greeting 07:00\n"
+        "⏰ Persiapan Signal 07:30\n"
         "📊 Poll Market 08:30\n"
-        "🌙 Night Message 20:00\n\n"
+        "🌙 VIP Night Message 20:00\n"
+        "🔒 Signal Closed 21:30\n\n"
         "Ketik 'ping' untuk cek status."
     )
 
@@ -254,7 +274,7 @@ def reply_message(update: Update, context: CallbackContext):
     text = update.message.text.lower()
 
     if "ping" in text:
-        update.message.reply_text("🏓 Pong! Bot aktif dan berjalan dengan normal.")
+        update.message.reply_text("🏓 Pong! Bot aktif dan berjalan normal.")
     else:
         update.message.reply_text("Bot aktif ✅")
 
@@ -275,10 +295,10 @@ dp.add_handler(MessageHandler(Filters.text & ~Filters.command, reply_message))
 scheduler = BackgroundScheduler(timezone="Asia/Jakarta")
 
 scheduler.add_job(send_greeting, "cron", day_of_week="mon-fri", hour=7, minute=0)
-
+scheduler.add_job(send_signal_preparation, "cron", day_of_week="mon-fri", hour=7, minute=30)
 scheduler.add_job(send_market_poll, "cron", day_of_week="mon-fri", hour=8, minute=30)
-
 scheduler.add_job(send_night_message, "cron", day_of_week="mon-fri", hour=20, minute=0)
+scheduler.add_job(send_signal_closed, "cron", day_of_week="mon-fri", hour=21, minute=30)
 
 scheduler.start()
 

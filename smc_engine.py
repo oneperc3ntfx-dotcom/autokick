@@ -1,329 +1,366 @@
 #!/usr/bin/env python3
-"""
-SMC (Smart Money Concept) Engine
-=================================
-Mendeteksi struktur market berbasis candle OHLC:
-- Swing High / Swing Low
-- BOS (Break of Structure) & CHoCH (Change of Character)
-- Order Block (OB) terakhir yang valid & belum dimitigasi
-- Fair Value Gap (FVG)
-- Liquidity Sweep (wick menembus swing lalu reverse)
 
-Catatan penting:
-SMC pada dasarnya diskresioner. Modul ini adalah APROKSIMASI rule-based
-dari konsep SMC, bukan pengganti analisa manusia. Selalu backtest dulu
-sebelum dipakai dengan uang sungguhan.
-"""
-
+import os
+import asyncio
 import logging
-from dataclasses import dataclass, field
-from typing import Optional
+import requests
 
-logger = logging.getLogger("XAU-BOT.smc")
+from datetime import datetime, timedelta
+
+import pytz
+from dotenv import load_dotenv
+
+from telegram import Update, BotCommand
+from telegram.ext import ApplicationBuilder, CommandHandler, ContextTypes
+
+from smc_engine import Candle, analyze
+
+# ================= LOAD ENV =================
+
+load_dotenv()
+
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+# PENTING: jangan taruh API key asli sebagai default value di kode.
+# Set TWELVE_TOKEN di environment variable Railway / file .env lokal.
+TWELVE_TOKEN = os.getenv("TWELVE_TOKEN")
+
+CHAT_ID = int(os.getenv("CHAT_ID", "-1002605110502"))
+THREAD_ID = int(os.getenv("THREAD_ID", "0"))
+
+# Timeframe candle untuk struktur SMC. Bisa "1h" atau "15min".
+SMC_INTERVAL = os.getenv("SMC_INTERVAL", "1h")
+SMC_CANDLE_COUNT = int(os.getenv("SMC_CANDLE_COUNT", "60"))
+
+# ================= TIMEZONE =================
+
+WIB = pytz.timezone("Asia/Jakarta")
+
+# ================= LOGGING =================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s | %(levelname)s | %(message)s"
+)
+
+logger = logging.getLogger("XAU-BOT")
+
+# ================= GLOBAL =================
+
+cached_candles = None
+cached_candles_time = None
+
+last_signal_time = None
+tasks_started = False
+
+# ================= MARKET SESSION =================
+
+def is_trading_time():
+
+    now = datetime.now(WIB)
+
+    day = now.weekday()
+    hour = now.hour
+
+    # Sabtu sampai jam 03:00 WIB
+    if day == 5:
+        return hour < 3
+
+    # Minggu OFF
+    if day == 6:
+        return False
+
+    # Senin mulai jam 07:00 WIB
+    if day == 0:
+        return hour >= 7
+
+    # Selasa - Jumat ON
+    return True
 
 
-# ================= DATA STRUCTURES =================
+# ================= GET CANDLES =================
 
-@dataclass
-class Candle:
-    time: str
-    open: float
-    high: float
-    low: float
-    close: float
-
-    @property
-    def bullish(self):
-        return self.close > self.open
-
-    @property
-    def bearish(self):
-        return self.close < self.open
-
-
-@dataclass
-class SwingPoint:
-    index: int
-    price: float
-    kind: str  # "high" or "low"
-
-
-@dataclass
-class OrderBlock:
-    index: int
-    kind: str  # "bullish" or "bearish"
-    top: float
-    bottom: float
-    mitigated: bool = False
-
-
-@dataclass
-class FVG:
-    index: int
-    kind: str  # "bullish" or "bearish"
-    top: float
-    bottom: float
-    filled: bool = False
-
-
-@dataclass
-class SMCResult:
-    bias: Optional[str] = None          # "BUY" / "SELL" / None
-    structure: str = "UNDEFINED"        # "BOS_UP" / "BOS_DOWN" / "CHOCH_UP" / "CHOCH_DOWN" / "RANGE"
-    reasons: list = field(default_factory=list)
-    active_ob: Optional[OrderBlock] = None
-    active_fvg: Optional[FVG] = None
-    liquidity_sweep: Optional[str] = None  # "buy_side" / "sell_side" / None
-    last_close: Optional[float] = None
-
-
-# ================= SWING DETECTION =================
-
-def find_swings(candles: list[Candle], left: int = 2, right: int = 2) -> list[SwingPoint]:
+def get_candles(interval: str = None, count: int = None):
     """
-    Deteksi swing high/low sederhana: titik dianggap swing high jika
-    high-nya lebih tinggi dari `left` candle sebelum dan `right` candle
-    sesudahnya (begitu juga sebaliknya untuk swing low).
+    Ambil data candle OHLC dari Twelve Data (endpoint time_series).
+    Dipakai untuk analisa struktur SMC, bukan cuma 1 titik harga.
+    Cache 60 detik supaya hemat kuota API (free tier terbatas).
     """
-    swings = []
-    n = len(candles)
 
-    for i in range(left, n - right):
-        window_high = [candles[j].high for j in range(i - left, i + right + 1)]
-        window_low = [candles[j].low for j in range(i - left, i + right + 1)]
+    global cached_candles
+    global cached_candles_time
 
-        if candles[i].high == max(window_high) and window_high.count(candles[i].high) == 1:
-            swings.append(SwingPoint(index=i, price=candles[i].high, kind="high"))
+    interval = interval or SMC_INTERVAL
+    count = count or SMC_CANDLE_COUNT
 
-        if candles[i].low == min(window_low) and window_low.count(candles[i].low) == 1:
-            swings.append(SwingPoint(index=i, price=candles[i].low, kind="low"))
+    now = datetime.now(WIB)
 
-    swings.sort(key=lambda s: s.index)
-    return swings
+    if (
+        cached_candles is not None
+        and cached_candles_time is not None
+    ):
+        diff = (now - cached_candles_time).total_seconds()
+        if diff < 60:
+            logger.info("USING CACHED CANDLES")
+            return cached_candles
 
+    if not TWELVE_TOKEN:
+        logger.error("TWELVE_TOKEN belum di-set di environment variable")
+        return cached_candles
 
-# ================= STRUCTURE (BOS / CHoCH) =================
+    try:
+        url = (
+            "https://api.twelvedata.com/time_series"
+            "?symbol=XAU/USD"
+            f"&interval={interval}"
+            f"&outputsize={count}"
+            f"&apikey={TWELVE_TOKEN}"
+        )
 
-def detect_structure(candles: list[Candle], swings: list[SwingPoint]) -> tuple[str, list[str]]:
-    """
-    Bandingkan swing high/low terbaru untuk menentukan:
-    - BOS_UP   : higher high terbentuk searah trend naik (continuation)
-    - BOS_DOWN : lower low terbentuk searah trend turun (continuation)
-    - CHOCH_UP : trend turun lalu tiba-tiba break swing high terakhir (reversal naik)
-    - CHOCH_DOWN: trend naik lalu tiba-tiba break swing low terakhir (reversal turun)
-    """
-    reasons = []
+        response = requests.get(url, timeout=15)
 
-    highs = [s for s in swings if s.kind == "high"]
-    lows = [s for s in swings if s.kind == "low"]
+        logger.info(f"TWELVEDATA STATUS: {response.status_code}")
 
-    if len(highs) < 2 or len(lows) < 2:
-        return "UNDEFINED", ["Data swing belum cukup untuk menentukan struktur"]
+        data = response.json()
 
-    last_close = candles[-1].close
+        if data.get("status") == "error":
+            logger.error(f"TWELVEDATA ERROR: {data.get('message')}")
+            return cached_candles
 
-    last_high = highs[-1]
-    prev_high = highs[-2]
-    last_low = lows[-1]
-    prev_low = lows[-2]
+        values = data.get("values")
 
-    higher_high = last_high.price > prev_high.price
-    higher_low = last_low.price > prev_low.price
-    lower_low = last_low.price < prev_low.price
-    lower_high = last_high.price < prev_high.price
+        if not values:
+            logger.error(f"TWELVEDATA: no values in response: {data}")
+            return cached_candles
 
-    was_downtrend = lower_low and lower_high
-    was_uptrend = higher_high and higher_low
+        # Twelve Data mengembalikan data dari yang TERBARU ke TERLAMA -> kita balik
+        values = list(reversed(values))
 
-    # PENTING: cek breakout (harga sekarang vs swing) LEBIH DULU sebelum
-    # menyimpulkan trend "masih intact". Kalau urutannya dibalik, candle
-    # impulsif yang sudah menembus jauh di atas/bawah swing tapi belum
-    # membentuk swing baru (karena butuh `right` candle konfirmasi) akan
-    # salah dibaca sebagai trend lama yang masih berjalan.
-
-    # Breakout ke atas swing high terakhir
-    if last_close > last_high.price:
-        if was_downtrend:
-            reasons.append(
-                f"CHoCH UP: trend turun berubah, close {last_close:.2f} break swing high {last_high.price:.2f}"
+        candles = [
+            Candle(
+                time=v["datetime"],
+                open=float(v["open"]),
+                high=float(v["high"]),
+                low=float(v["low"]),
+                close=float(v["close"]),
             )
-            return "CHOCH_UP", reasons
-        reasons.append(f"BOS UP: close {last_close:.2f} menembus swing high {last_high.price:.2f}")
-        return "BOS_UP", reasons
+            for v in values
+        ]
 
-    # Breakout ke bawah swing low terakhir
-    if last_close < last_low.price:
-        if was_uptrend:
-            reasons.append(
-                f"CHoCH DOWN: trend naik berubah, close {last_close:.2f} break swing low {last_low.price:.2f}"
-            )
-            return "CHOCH_DOWN", reasons
-        reasons.append(f"BOS DOWN: close {last_close:.2f} menembus swing low {last_low.price:.2f}")
-        return "BOS_DOWN", reasons
+        cached_candles = candles
+        cached_candles_time = now
 
-    # Belum ada breakout -> trend lama (kalau ada) masih dianggap intact
-    if was_uptrend:
-        reasons.append("Struktur uptrend (higher high & higher low) masih intact, belum ada BOS baru")
-        return "RANGE", reasons
+        logger.info(f"LIVE CANDLES: {len(candles)} bars, last close = {candles[-1].close}")
 
-    if was_downtrend:
-        reasons.append("Struktur downtrend (lower low & lower high) masih intact, belum ada BOS baru")
-        return "RANGE", reasons
+        return candles
 
-    reasons.append("Struktur belum jelas / sideways")
-    return "RANGE", reasons
+    except Exception as e:
+        logger.error(f"CANDLE FETCH ERROR: {e}")
+
+    return cached_candles
 
 
-# ================= ORDER BLOCK =================
-
-def find_order_blocks(candles: list[Candle], structure: str) -> Optional[OrderBlock]:
-    """
-    Order block sederhana: candle terakhir berlawanan arah (down candle untuk
-    bullish OB, up candle untuk bearish OB) sebelum pergerakan impulsif yang
-    menghasilkan BOS/CHoCH. Kita ambil dari ~15 candle terakhir, candle paling
-    baru yang relevan dan belum dimitigasi (harga belum kembali menembus penuh).
-    """
-    if structure in ("BOS_UP", "CHOCH_UP"):
-        # cari candle bearish terakhir sebelum leg naik
-        for i in range(len(candles) - 2, max(len(candles) - 20, 0), -1):
-            c = candles[i]
-            if c.bearish:
-                ob = OrderBlock(index=i, kind="bullish", top=c.high, bottom=c.low)
-                # cek mitigasi: apakah candle setelahnya sudah menutup di bawah bottom OB
-                for later in candles[i + 1:]:
-                    if later.close < ob.bottom:
-                        ob.mitigated = True
-                        break
-                return ob
-
-    if structure in ("BOS_DOWN", "CHOCH_DOWN"):
-        # cari candle bullish terakhir sebelum leg turun
-        for i in range(len(candles) - 2, max(len(candles) - 20, 0), -1):
-            c = candles[i]
-            if c.bullish:
-                ob = OrderBlock(index=i, kind="bearish", top=c.high, bottom=c.low)
-                for later in candles[i + 1:]:
-                    if later.close > ob.top:
-                        ob.mitigated = True
-                        break
-                return ob
-
-    return None
-
-
-# ================= FAIR VALUE GAP =================
-
-def find_fair_value_gaps(candles: list[Candle], lookback: int = 15) -> Optional[FVG]:
-    """
-    FVG 3-candle: gap antara high candle[i-1] dan low candle[i+1] (bullish FVG),
-    atau antara low candle[i-1] dan high candle[i+1] (bearish FVG).
-    Mengembalikan FVG terakhir yang belum terisi penuh.
-    """
-    start = max(1, len(candles) - lookback)
-    last_fvg = None
-
-    for i in range(start, len(candles) - 1):
-        c0, c2 = candles[i - 1], candles[i + 1]
-
-        # Bullish FVG: low candle setelahnya > high candle sebelumnya
-        if c2.low > c0.high:
-            fvg = FVG(index=i, kind="bullish", top=c2.low, bottom=c0.high)
-            filled = any(c.low <= fvg.bottom for c in candles[i + 2:])
-            fvg.filled = filled
-            if not filled:
-                last_fvg = fvg
-
-        # Bearish FVG: high candle setelahnya < low candle sebelumnya
-        if c2.high < c0.low:
-            fvg = FVG(index=i, kind="bearish", top=c0.low, bottom=c2.high)
-            filled = any(c.high >= fvg.top for c in candles[i + 2:])
-            fvg.filled = filled
-            if not filled:
-                last_fvg = fvg
-
-    return last_fvg
-
-
-# ================= LIQUIDITY SWEEP =================
-
-def detect_liquidity_sweep(candles: list[Candle], swings: list[SwingPoint]) -> Optional[str]:
-    """
-    Liquidity sweep: candle terbaru membuat wick yang menembus swing high/low
-    sebelumnya, tapi closing kembali di dalam range (rejection) -> indikasi
-    stop hunt / liquidity grab sebelum reversal.
-    """
-    if not swings or len(candles) < 3:
+def get_price():
+    """Harga terkini = close candle terakhir."""
+    candles = get_candles()
+    if not candles:
         return None
-
-    last = candles[-1]
-    recent_highs = [s for s in swings if s.kind == "high" and s.index < len(candles) - 1]
-    recent_lows = [s for s in swings if s.kind == "low" and s.index < len(candles) - 1]
-
-    if recent_highs:
-        ref_high = recent_highs[-1].price
-        if last.high > ref_high and last.close < ref_high:
-            return "sell_side"  # sweep liquidity di atas, lalu reject turun
-
-    if recent_lows:
-        ref_low = recent_lows[-1].price
-        if last.low < ref_low and last.close > ref_low:
-            return "buy_side"  # sweep liquidity di bawah, lalu reject naik
-
-    return None
+    return candles[-1].close
 
 
-# ================= MAIN ENTRY POINT =================
+# ================= BUILD SIGNAL =================
 
-def analyze(candles: list[Candle]) -> SMCResult:
-    """
-    Jalankan seluruh pipeline SMC dan hasilkan kesimpulan bias + alasan.
-    `candles` harus urut dari paling lama -> paling baru.
-    """
-    result = SMCResult()
+async def build_signal():
 
-    if len(candles) < 10:
-        result.reasons.append("Data candle tidak cukup (minimal 10 candle)")
-        return result
+    if not is_trading_time():
+        return "📴 MARKET CLOSED"
 
-    result.last_close = candles[-1].close
+    candles = get_candles()
 
-    swings = find_swings(candles)
-    structure, structure_reasons = detect_structure(candles, swings)
-    result.structure = structure
-    result.reasons.extend(structure_reasons)
+    if not candles:
+        return "⚠️ No realtime price data"
 
-    sweep = detect_liquidity_sweep(candles, swings)
-    result.liquidity_sweep = sweep
-    if sweep == "buy_side":
-        result.reasons.append("Liquidity sweep terdeteksi di bawah swing low (potensi reversal naik)")
-    elif sweep == "sell_side":
-        result.reasons.append("Liquidity sweep terdeteksi di atas swing high (potensi reversal turun)")
+    result = analyze(candles)
 
-    ob = find_order_blocks(candles, structure)
-    if ob and not ob.mitigated:
-        result.active_ob = ob
-        result.reasons.append(
-            f"Order block {ob.kind} aktif di area {ob.bottom:.2f} - {ob.top:.2f}"
-        )
+    entry = result.last_close
+    now = datetime.now(WIB).strftime("%Y-%m-%d %H:%M:%S")
 
-    fvg = find_fair_value_gaps(candles)
-    if fvg:
-        result.active_fvg = fvg
-        result.reasons.append(
-            f"Fair Value Gap {fvg.kind} belum terisi di area {fvg.bottom:.2f} - {fvg.top:.2f}"
-        )
+    if result.bias is None:
+        reason_text = "\n".join([f"- {r}" for r in result.reasons])
+        return f"""
+📊 XAUUSD SIGNAL
 
-    # ================= KEPUTUSAN BIAS =================
-    # Bias hanya diberikan jika ada konfirmasi struktur YANG JELAS (BOS/CHoCH)
-    # Tidak ada bias dipaksakan saat market RANGE/UNDEFINED -> ini penting,
-    # lebih baik tidak ada sinyal daripada sinyal palsu.
+🕒 {now} WIB
 
-    if structure in ("BOS_UP", "CHOCH_UP"):
-        result.bias = "BUY"
-    elif structure in ("BOS_DOWN", "CHOCH_DOWN"):
-        result.bias = "SELL"
+📈 BIAS: NO TRADE (struktur belum jelas / range)
+
+📌 Harga sekarang: {entry:.2f}
+
+🧠 ANALISA:
+{reason_text}
+
+━━━━━━━━━━━━
+"""
+
+    bias = result.bias
+
+    # SL/TP fixed (pips), sesuai permintaan: TP1 +7, TP2 +15, SL -5
+    if bias == "BUY":
+        setup = "BUY LIMIT"
+        tp1 = entry + 7
+        tp2 = entry + 15
+        sl = entry - 5
     else:
-        result.bias = None
-        result.reasons.append("Tidak ada bias jelas -> sinyal ditahan (no trade)")
+        setup = "SELL LIMIT"
+        tp1 = entry - 7
+        tp2 = entry - 15
+        sl = entry + 5
 
-    return result
+    reason_text = "\n".join([f"- {r}" for r in result.reasons])
+
+    return f"""
+📊 XAUUSD SIGNAL
+
+🕒 {now} WIB
+
+📈 BIAS: {bias}
+🔎 STRUKTUR: {result.structure}
+
+📌 ENTRY: {setup} @ {entry:.2f}
+
+🎯 TP1: {tp1:.2f}
+🎯 TP2: {tp2:.2f}
+⛔ SL : {sl:.2f}
+
+🧠 REASON:
+{reason_text}
+
+⚠️ Ini hasil analisa otomatis berbasis aturan SMC, bukan saran finansial.
+Selalu cross-check manual sebelum entry.
+━━━━━━━━━━━━
+"""
+
+
+# ================= SEND MESSAGE =================
+
+async def send(app, text):
+
+    await app.bot.send_message(
+        chat_id=CHAT_ID,
+        message_thread_id=THREAD_ID,
+        text=text
+    )
+
+
+# ================= SCHEDULER =================
+
+async def scheduler(app):
+
+    global last_signal_time
+
+    while True:
+
+        now = datetime.now(WIB)
+
+        # ================= UBAH KE MENIT 00 =================
+        next_run = now.replace(minute=0, second=0, microsecond=0)
+
+        if now.minute >= 0:
+            next_run += timedelta(hours=1)
+        # ===================================================
+
+        wait_time = (next_run - now).total_seconds()
+
+        logger.info(f"NEXT SIGNAL: {next_run}")
+        logger.info(f"WAITING {wait_time:.0f} SECONDS")
+
+        await asyncio.sleep(wait_time)
+
+        if not is_trading_time():
+            logger.info("MARKET CLOSED")
+            continue
+
+        current_time = datetime.now(WIB).replace(second=0, microsecond=0)
+
+        if last_signal_time == current_time:
+            continue
+
+        last_signal_time = current_time
+
+        msg = await build_signal()
+
+        await send(app, msg)
+
+        logger.info("SIGNAL SENT")
+
+
+# ================= COMMANDS =================
+
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text("🤖 XAU BOT ACTIVE")
+
+
+async def signal(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    msg = await build_signal()
+    await update.message.reply_text(msg)
+
+
+async def price(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+    p = get_price()
+
+    if p is None:
+        return await update.message.reply_text("⚠️ No realtime price data")
+
+    await update.message.reply_text(f"📈 XAUUSD: {p:.2f}")
+
+
+# ================= POST INIT =================
+
+async def post_init(app):
+
+    global tasks_started
+
+    if tasks_started:
+        return
+
+    tasks_started = True
+
+    await app.bot.set_my_commands([
+        BotCommand("start", "Start bot"),
+        BotCommand("price", "Check XAUUSD price"),
+        BotCommand("signal", "Generate signal")
+    ])
+
+    await send(app, "🤖 BOT ACTIVE")
+
+    asyncio.create_task(scheduler(app))
+
+    logger.info("BOT RUNNING STABLE")
+
+
+# ================= MAIN =================
+
+def main():
+
+    if not BOT_TOKEN:
+        raise RuntimeError("BOT_TOKEN belum di-set di environment variable")
+
+    if not TWELVE_TOKEN:
+        logger.warning("TWELVE_TOKEN belum di-set! Bot akan jalan tapi tidak bisa ambil data harga.")
+
+    logger.info("STARTING BOT...")
+
+    app = ApplicationBuilder().token(BOT_TOKEN).build()
+
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("price", price))
+    app.add_handler(CommandHandler("signal", signal))
+
+    app.post_init = post_init
+
+    app.run_polling(drop_pending_updates=True, close_loop=False)
+
+
+if __name__ == "__main__":
+    main()

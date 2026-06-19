@@ -204,25 +204,17 @@ async def build_signal():
 
     bias = result.bias
 
-    # SL/TP berbasis order block & FVG kalau tersedia, kalau tidak fallback fixed
+    # SL/TP fixed (pips), sesuai permintaan: TP1 +7, TP2 +15, SL -5
     if bias == "BUY":
         setup = "BUY LIMIT"
-        if result.active_ob:
-            sl = result.active_ob.bottom - 2
-        else:
-            sl = entry - 5
-        risk = entry - sl
-        tp1 = entry + risk * 1.5
-        tp2 = entry + risk * 3
+        tp1 = entry + 7
+        tp2 = entry + 15
+        sl = entry - 5
     else:
         setup = "SELL LIMIT"
-        if result.active_ob:
-            sl = result.active_ob.top + 2
-        else:
-            sl = entry + 5
-        risk = sl - entry
-        tp1 = entry - risk * 1.5
-        tp2 = entry - risk * 3
+        tp1 = entry - 7
+        tp2 = entry - 15
+        sl = entry + 5
 
     reason_text = "\n".join([f"- {r}" for r in result.reasons])
 
